@@ -64,6 +64,67 @@ impl Board {
 
         Ok(board)
     }
+
+    /// Parse a position to Forsyth-Edwards Notation
+    pub fn to_fen(&self) -> String {
+        // Field 1: Piece Placement
+        let mut ranks: Vec<String> = Vec::new();
+        for rank in (0..8).rev() {
+            let mut row = String::new();
+            let mut empty = 0;
+            for file in 0..8 {
+                match self.piece_at(Square::new(file, rank)) {
+                    Some(p) => {
+                        if empty > 0 {
+                            row.push_str(&empty.to_string());
+                            empty = 0
+                        }
+                        row.push(char_from_piece(p));
+                    }
+                    None => empty += 1,
+                }
+            }
+            if empty > 0 {
+                row.push_str(&empty.to_string());
+            }
+            ranks.push(row);
+        }
+        let placement: String = ranks.join("/");
+
+        // Field 2: Color to move
+        let side: &str = match self.side_to_move {
+            Color::White => "w",
+            Color::Black => "b",
+        };
+        
+        // Field 3: Castling rights
+        let mut castling_rights: Vec<&str> = Vec::new();
+        if self.castling.white_kingside { castling_rights.push("K"); }
+        if self.castling.white_queenside { castling_rights.push("Q"); }
+        if self.castling.black_kingside { castling_rights.push("k"); }
+        if self.castling.black_queenside { castling_rights.push("q"); }
+        let castling: String = if castling_rights.is_empty() {
+            "-".to_string()
+        } else {
+            castling_rights.join("")
+        };
+
+        // Field 4: En-passant targets
+        let en_passant: String = if let Some(sq) = self.en_passant {
+            str_from_square(sq)
+        } else {
+            "-".to_string()
+        };
+
+        // Field 5: Half-move clock
+        let halfmove_clock: String = self.halfmove_clock.to_string();
+
+        // Field 6: Full move number
+        let fullmove_number: String = self.fullmove_number.to_string();
+
+        // Construct FEN string
+        format!("{} {} {} {} {} {}", placement, side, castling, en_passant, halfmove_clock, fullmove_number)
+    }
 }
 
 // Helpers
@@ -114,6 +175,40 @@ fn square_from_str(s: &str) -> Result<Square, String> {
     Ok(Square::new(file, rank))
 }
 
+fn char_from_piece(p: Piece) -> char {
+    let ch: char = match p.kind {
+        PieceKind::Pawn => 'p',
+        PieceKind::Knight => 'n',
+        PieceKind::Bishop => 'b',
+        PieceKind::Rook => 'r',
+        PieceKind::Queen => 'q',
+        PieceKind::King => 'k',
+    };
+
+    match p.color {
+        Color::White => ch.to_ascii_uppercase(),
+        Color::Black => ch,
+    }
+}
+
+fn str_from_square(sq: Square) -> String {
+    let file: char = match sq.file() {
+        0 => 'a',
+        1 => 'b',
+        2 => 'c',
+        3 => 'd',
+        4 => 'e',
+        5 => 'f',
+        6 => 'g',
+        7 => 'h',
+        _ => '-',
+    };
+
+    let rank: u8 = sq.rank() + 1;
+
+    format!("{}{}", file, rank.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +228,13 @@ mod tests {
         assert_eq!(board.side_to_move, Color::White);
         assert_eq!(board.castling.white_kingside, true);
         assert_eq!(board.halfmove_clock, 0);
+    }
+
+    #[test]
+    fn fen_idempotency() {
+        let start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        let board = Board::from_fen(start).expect("start FEN should parse");
+
+        assert_eq!(board.to_fen(), start);
     }
 }
